@@ -1,0 +1,129 @@
+---
+title: "Квадратичный дискриминантный анализ"
+output:
+  pdf_document: default
+  html_document: default
+lang: ru_RU
+---
+Установка и загрузка пакетов:
+```{r}
+#install.packages("ISLR") # dataset Smarket
+#install.packages("MASS") # lda, qda
+
+#install.packages("normtest") # jb.normtest
+#install.packages("heplots") # boxM
+#install.packages("moments") # skewness, kurtosis
+#tinytex::install_tinytex()
+library(normtest)
+library(ISLR)
+library(heplots)
+library(MASS)
+library(moments)
+library(factoextra)
+library (readxl)
+
+```
+Получааем данные
+```{r}
+data <- read_xlsx("E:\\HSE\\статистика\\работа 1\\данные для проекта.xlsx")
+hist(data$`All cases`)
+hist(data$`New cases`)
+hist(data$`Total deaths`)
+hist(data$`Total recovered`)
+hist(data$`Total tests`)
+
+hist(log(data$`All cases`))
+hist(log(data$`New cases`))
+hist(log(data$`Total deaths`))
+hist(log(data$`Total recovered`))
+hist(log(data$`Total tests`))
+```
+Нормализация
+```{r}
+data_normal <- data[,c("All cases", "New cases", "Total deaths", "Total recovered", "Total tests")] <- log(data[,c("All cases", "New cases", "Total deaths", "Total recovered", "Total tests")])
+data_normal$`All cases`
+```
+Получили нормализованные данные по коронавирусу из 66 стран на 11.04.2021.
+All cases - все случаи заболевания
+New cases - случаи заболевания, зарегистрированные за 11.04.2021
+Total deaths - все летальные случаи
+Total recovered - все случаи выздоровления
+Total tests - количество проведенных тестов
+Между всеми переменными имеется линейная зависимость
+```{r}
+clustered_data <- scale(data_normal)
+cov_matrix <- cov(clustered_data)
+print(cov_matrix)
+```
+Избавимся от переменной All cases, т.к. ее кфы корреляции самые высокие
+```{r}
+clustered_data <- clustered_data[,c("New cases", "Total deaths", "Total recovered", "Total tests" )]
+```
+Иерархическая кластеризация с использованием евклидова расстояния, с помощью WSS посчитаем оптимальное количество кластеров.
+```{r}
+fviz_nbclust(clustered_data, kmeans, method = 'wss') +
+  labs(x = 'Число кластеров', y = 'Сумма внутрикластерных дисперсий', title = 'Зависимость WSS от количества кластеров')
+```
+Получили разделение на два кластера, построим дендрограмму методом Уорда
+```{r}
+hclusters_w <- hcut(clustered_data, k = 3, hc_metric = 'euclidian', hc_method = 'ward.D2')
+
+fviz_dend(hclusters_w,
+          cex = 0.5,
+          color_labels_by_k = TRUE,
+          main = 'Дендрограмма (принцип Уорда)', ylab = 'Расстояние')
+```
+Метод k-средних
+```{r}
+fviz_nbclust(clustered_data, kmeans, method = 'wss') +
+  labs(x = 'число кластеров', y = 'сумма внутрикластерных дисперсий',
+       title = 'Зависимость WSS от числа кластеров')
+
+kmeans2 <- kmeans(clustered_data, centers = 2)
+kmeans2
+```
+Сделаем анализ силуэтов.
+```{r}
+fviz_nbclust(clustered_data, kmeans, method = 'silhouette') +
+  labs(x = 'Число кластеров', y = 'Средняя ширина силуэта по всем точкам',
+       title = 'Зависимость средней ширины силуэта от числа кластеров')
+```
+Теперь понятно, что надо было выбрать 2 кластера
+Визуализация
+```{r}
+fviz_cluster(object = kmeans2, data = clustered_data,
+             ellipse.type = 'convex', geom = 'point',
+             main = 'Кластеры в пространстве первых двух главных компонент')
+```
+Смотрим на возможные расстояния
+
+Евклидово расстояние
+```{r}
+eucl_dist <- dist(clustered_data[1:40,], method='euclidian')
+fviz_dist(eucl_dist)
+```
+Максимум
+```{r}
+eucl_dist <- dist(clustered_data[1:40,], method = 'maximum')
+fviz_dist(eucl_dist)
+```
+Манхэттэн
+```{r}
+manh_dist <- dist(clustered_data[1:40,], method='manhattan')
+fviz_dist(eucl_dist)
+```
+Выберем расстояние manhattan, проанализировав альтернативы
+
+Нормализованные данные
+```{r}
+plot(1:4, kmeans2$centers[1,], type = 'l', col = 'red', lwd = 2, ylim = c(-3, 1.5),
+     ylab = 'Среднее значение признака',  xaxt = 'n')
+lines(1:4, kmeans2$centers[2,], type = 'l', col = 'blue', lwd = 2)
+title('График средних (признаки стандартизированы)')
+axis(1, at=1:4, labels = colnames(clustered_data), las = 2)
+legend(1, -1.3, c('Кластер 1', 'Кластер 2' ),
+       lwd = c(2, 2, 2, 2), col = c('red', 'blue'))
+```
+```
+Анализ на стандартных данных дает такой же результат:
+В итоге получили 2 кластера по странам с бОльшим и мЕньшим кол-вом больных, в целом соотносится, что кол-во смертей и кол-во заболеваний в странах с бОльшим населением в основном больше, и наоборот.
